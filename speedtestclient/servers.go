@@ -16,7 +16,7 @@ import (
 const (
 	PingTimeout    = 10 * time.Second
 	HiTimeout      = 1 * time.Minute
-	UpDownloadSize = 128 * converter.GB
+	UpDownloadSize = 128 * converter.PB
 )
 
 type (
