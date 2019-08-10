@@ -120,6 +120,7 @@ func main() {
 				log.Fatalf("server host not found, id: %d\n", speedtestServerID)
 			}
 
+			speedtestServerHost = server.Host
 			log.Printf("server found, %s\n", server)
 		} else if speedtestServerHost == "" {
 			// default, find host
