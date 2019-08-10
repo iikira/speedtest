@@ -2,6 +2,12 @@
 
 Command line client for speedtest.net
 
+# Install
+
+```
+go get -u -v github.com/iikira/speedtest
+```
+
 # Usage
 ```
 Usage of ./speedtest:
