@@ -202,7 +202,7 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 		speedStat = speeds.Speeds{} // 计算速度
 		ticker    = time.NewTicker(opt.CallbackInterval)
 		stopChan  = make(chan struct{})
-		commonBuf = cachepool.RawByteSlice(2048)
+		commonBuf = cachepool.RawMallocByteSlice(2048)
 	)
 
 	statistic.startTimer() // 开始计时
