@@ -2,6 +2,10 @@
 
 Command line client for speedtest.net
 
+[![Build status](https://ci.appveyor.com/api/projects/status/ubryl519h0peejty?svg=true
+)](https://ci.appveyor.com/project/iikira/speedtest)
+[![GoDoc](https://godoc.org/github.com/iikira/speedtest?status.svg)](https://godoc.org/github.com/iikira/speedtest)
+
 # Install
 
 ```
