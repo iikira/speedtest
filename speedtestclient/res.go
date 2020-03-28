@@ -7,11 +7,13 @@ import (
 )
 
 type (
+	// HIRes HI 结果
 	HIRes struct {
 		Message string
 		Latency time.Duration
 	}
 
+	// PingRes PING 结果
 	PingRes struct {
 		Latencies []time.Duration
 		Average   time.Duration
@@ -21,6 +23,7 @@ type (
 		Total     time.Duration
 	}
 
+	// UpDownloadRes 下载或上传的结果
 	UpDownloadRes struct {
 		TimeElapsed       time.Duration
 		SpeedsPerSecond   []int64
@@ -31,7 +34,9 @@ type (
 	}
 
 	PingCallback       func(seq int, latency time.Duration)
-	UpDownloadCallback func(speedPerSecond int64, elapsed, left time.Duration)
+
+	//UpDownloadCallback 上传或下载的回调
+	UpDownloadCallback func(statistic *Statistic)
 
 	TimeDurationSlice []time.Duration
 )
@@ -65,8 +70,8 @@ func NewPingRes(latencies []time.Duration) *PingRes {
 	return &res
 }
 
-func NewUpDownloadRes(timeElapsed time.Duration, speeds []int64) *UpDownloadRes {
-	speedsLen := len(speeds)
+func NewUpDownloadRes(timeElapsed time.Duration, statistic *Statistic) *UpDownloadRes {
+	speedsLen := len(statistic.speedPerSeconds)
 	res := UpDownloadRes{
 		TimeElapsed:     timeElapsed,
 		SpeedsPerSecond: make([]int64, 0, speedsLen),
@@ -77,7 +82,7 @@ func NewUpDownloadRes(timeElapsed time.Duration, speeds []int64) *UpDownloadRes 
 	}
 
 	var total int64
-	for _, speed := range speeds {
+	for _, speed := range statistic.speedPerSeconds {
 		res.SpeedsPerSecond = append(res.SpeedsPerSecond, speed)
 		if speed > res.MaxSpeedPerSecond {
 			res.MaxSpeedPerSecond = speed
@@ -92,8 +97,8 @@ func NewUpDownloadRes(timeElapsed time.Duration, speeds []int64) *UpDownloadRes 
 	}
 
 	res.AverageSpeed = total / int64(speedsLen)
-	sort.Sort(TimeDurationSlice(*(*[]time.Duration)(unsafe.Pointer(&speeds))))
-	res.MedianSpeed = speeds[speedsLen/2]
+	sort.Sort(TimeDurationSlice(*(*[]time.Duration)(unsafe.Pointer(&statistic.speedPerSeconds))))
+	res.MedianSpeed = statistic.speedPerSeconds[speedsLen/2]
 	return &res
 }
 

@@ -4,12 +4,19 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"github.com/iikira/BaiduPCS-Go/baidupcs/expires"
+	"github.com/iikira/BaiduPCS-Go/baidupcs/expires/cachemap"
 	mathrand "math/rand"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
+)
+
+const (
+	// MaxDuration 最大的Duration
+	MaxDuration = 1<<63 - 1
 )
 
 var (
@@ -20,6 +27,8 @@ var (
 
 	// ErrProxyAddrEmpty 代理地址为空
 	ErrProxyAddrEmpty = errors.New("proxy addr is empty")
+
+	tcpCache = cachemap.GlobalCacheOpMap.LazyInitCachePoolOp("requester/tcp")
 )
 
 // SetLocalTCPAddrList 设置网卡地址
@@ -90,6 +99,12 @@ func SetGlobalProxy(proxyAddr string) {
 	ProxyAddr = proxyAddr
 }
 
+// SetTCPHostBind 设置host绑定ip
+func SetTCPHostBind(host, ip string) {
+	tcpCache.Store(host, expires.NewDataExpires(net.ParseIP(ip), MaxDuration))
+	return
+}
+
 func getServerName(address string) string {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
@@ -98,51 +113,44 @@ func getServerName(address string) string {
 	return host
 }
 
-func resolveTCP(ctx context.Context, address string) (tcpaddr *net.TCPAddr, err error) {
-	host, port, err := net.SplitHostPort(address)
-	if err != nil {
-		return
-	}
-
+// resolveTCPHost
+// 解析的tcpaddr没有port!!!
+func resolveTCPHost(ctx context.Context, host string) (ip net.IP, err error) {
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return
 	}
 
-	p, err := strconv.Atoi(port)
-	if err != nil {
-		return
-	}
-
-	return &net.TCPAddr{
-		IP:   addrs[0].IP,
-		Port: p,
-		Zone: addrs[0].Zone,
-	}, nil
+	return addrs[0].IP, nil
 }
 
 func dialContext(ctx context.Context, network, address string) (conn net.Conn, err error) {
 	switch network {
 	case "tcp", "tcp4", "tcp6":
-		var (
-			ta = TCPAddrCache.Get(address)
-		)
-
-		// 检测缓存
-		if ta != nil {
-			return net.DialTCP(network, getLocalTCPAddr(), ta)
+		host, portStr, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
 		}
-
-		// Resolve TCP address
-		ta, err = resolveTCP(ctx, address)
-
+		data, err := cachemap.GlobalCacheOpMap.CacheOperationWithError("requester/tcp", host, func() (expires.DataExpires, error) {
+			ip, err := resolveTCPHost(ctx, host)
+			if err != nil {
+				return nil, err
+			}
+			return expires.NewDataExpires(ip, 10*time.Minute), nil // 传值
+		})
 		if err != nil {
 			return nil, err
 		}
 
-		// 加入缓存
-		TCPAddrCache.Set(address, ta)
-		return net.DialTCP(network, getLocalTCPAddr(), ta)
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return nil, err
+		}
+
+		return net.DialTCP(network, getLocalTCPAddr(), &net.TCPAddr{
+			IP:   data.Data().(net.IP),
+			Port: port, // 设置端口
+		})
 	}
 
 	// 非 tcp 请求

@@ -1,13 +1,15 @@
-# github.com/iikira/BaiduPCS-Go v0.0.0-20190810052828-437c7b2651e5
+# github.com/iikira/BaiduPCS-Go v0.0.0-20200328045803-fea1d7352aed
+github.com/iikira/BaiduPCS-Go/baidupcs/expires
+github.com/iikira/BaiduPCS-Go/baidupcs/expires/cachemap
+github.com/iikira/BaiduPCS-Go/pcstable
 github.com/iikira/BaiduPCS-Go/pcsutil/converter
 github.com/iikira/BaiduPCS-Go/requester
-github.com/iikira/BaiduPCS-Go/pcstable
-github.com/iikira/BaiduPCS-Go/requester/rio/speeds
 github.com/iikira/BaiduPCS-Go/requester/rio
-# github.com/mattn/go-runewidth v0.0.4
+github.com/iikira/BaiduPCS-Go/requester/rio/speeds
+# github.com/mattn/go-runewidth v0.0.5-0.20181218000649-703b5e6b11ae
 github.com/mattn/go-runewidth
-# github.com/olekukonko/tablewriter v0.0.1
+# github.com/olekukonko/tablewriter v0.0.2-0.20190618033246-cc27d85e17ce
 github.com/olekukonko/tablewriter
 # golang.org/x/net v0.0.0-20190724013045-ca1201d0de80
-golang.org/x/net/proxy
 golang.org/x/net/internal/socks
+golang.org/x/net/proxy

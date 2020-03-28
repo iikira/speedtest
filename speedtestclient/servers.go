@@ -2,6 +2,7 @@ package speedtestclient
 
 import (
 	"bytes"
+	"github.com/iikira/BaiduPCS-Go/pcsutil/cachepool"
 	"github.com/iikira/BaiduPCS-Go/pcsutil/converter"
 	"github.com/iikira/BaiduPCS-Go/requester/rio/speeds"
 	"github.com/iikira/speedtest/speedtestutil/bytemessage"
@@ -33,7 +34,7 @@ type (
 		CallbackInterval time.Duration // 回调函数调用的时间间隔
 	}
 
-	upDownloadHandleFunc func(i int, wg *sync.WaitGroup, speedStat *speeds.Speeds, latestError error)
+	upDownloadHandleFunc func(i int, commonBuf []byte, wg *sync.WaitGroup, statistic *Statistic, speedStat *speeds.Speeds, latestError error)
 )
 
 func (sc *SpeedtestClient) WithHost(host string) *SpeedtestClientWithHost {
@@ -143,6 +144,7 @@ func (sch *SpeedtestClientWithHost) Ping(times int, sleep time.Duration, callbac
 			return
 		}
 
+		// 读取响应
 		n, err = conn.Read(buf)
 		if err != nil {
 			if IsTimeout(err) {
@@ -152,6 +154,7 @@ func (sch *SpeedtestClientWithHost) Ping(times int, sleep time.Duration, callbac
 			return
 		}
 
+		// 计算延时
 		latency := time.Since(nowTime)
 
 		fields := bytes.Fields(bytes.TrimSuffix(buf[:n], []byte{'\n'}))
@@ -190,29 +193,34 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 	var (
 		latestError error
 		wg          = sync.WaitGroup{}
-		speedStat   = speeds.Speeds{}
-		ticker      = time.NewTicker(opt.CallbackInterval)
-		stopChan    = make(chan struct{})
-		nowTime     = time.Now()
-		speeds      = make([]int64, 0, 32)
+		// 统计
+		statistic = Statistic{
+			totalSize: UpDownloadSize,
+			speedPerSeconds: make([]int64, 0, 32),
+			timeout:   opt.Timeout,
+		}
+		speedStat = speeds.Speeds{} // 计算速度
+		ticker    = time.NewTicker(opt.CallbackInterval)
+		stopChan  = make(chan struct{})
+		commonBuf = cachepool.RawByteSlice(2048)
 	)
+
+	statistic.startTimer() // 开始计时
 	wg.Add(opt.Parallel)
 	for i := 0; i < opt.Parallel; i++ {
-		go gofn(i, &wg, &speedStat, latestError)
+		go gofn(i, commonBuf, &wg, &statistic, &speedStat, latestError)
 	}
 	go func() { // start callback
 		for {
 			select {
 			case <-ticker.C:
-				s := speedStat.GetSpeedsPerSecond()
-				speeds = append(speeds, s)
+				speed := speedStat.GetSpeeds()
+				statistic.appendSpeedPerSecond(speed)
+
+				// 更新统计
+				statistic.speedPerSecond = speed
 				if callback != nil {
-					elapsed := time.Since(nowTime)
-					left := opt.Timeout - elapsed
-					if left < 0 {
-						left = 0
-					}
-					callback(s, elapsed, left)
+					callback(&statistic)
 				}
 			case <-stopChan:
 				return
@@ -227,13 +235,13 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 		return nil, latestError
 	}
 
-	elapsed := time.Since(nowTime)
-	res = NewUpDownloadRes(elapsed, speeds)
+	elapsed := statistic.Elapsed()
+	res = NewUpDownloadRes(elapsed, &statistic)
 	return
 }
 
 func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpDownloadCallback) (res *UpDownloadRes, err error) {
-	return sch.upDownload(opt, callback, func(i int, wg *sync.WaitGroup, speedStat *speeds.Speeds, latestError error) {
+	return sch.upDownload(opt, callback, func(i int, commonBuf []byte, wg *sync.WaitGroup, statistic *Statistic, speedStat *speeds.Speeds, latestError error) {
 		defer wg.Done()
 		conn, err := sch.dialHost()
 		if err != nil {
@@ -248,9 +256,8 @@ func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpD
 			return
 		}
 
-		buf := make([]byte, 8192)
 		for {
-			n, err := conn.Read(buf)
+			n, err := conn.Read(commonBuf)
 			if err != nil {
 				if err == io.EOF { // 已下载完毕，暂不处理
 					break
@@ -261,12 +268,13 @@ func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpD
 				latestError = err
 			}
 			speedStat.Add(int64(n))
+			statistic.addTransferSize(int64(n)) // 增加
 		}
 	})
 }
 
 func (sch *SpeedtestClientWithHost) Upload(opt *UpDownloadOption, callback UpDownloadCallback) (res *UpDownloadRes, err error) {
-	return sch.upDownload(opt, callback, func(i int, wg *sync.WaitGroup, speedStat *speeds.Speeds, latestError error) {
+	return sch.upDownload(opt, callback, func(i int,commonBuf []byte, wg *sync.WaitGroup, statistic *Statistic, speedStat *speeds.Speeds, latestError error) {
 		defer wg.Done()
 		conn, err := sch.dialHost()
 		if err != nil {
@@ -281,12 +289,8 @@ func (sch *SpeedtestClientWithHost) Upload(opt *UpDownloadOption, callback UpDow
 			return
 		}
 
-		buf := make([]byte, 1024)
-		for k := range buf {
-			buf[k] = '1'
-		}
 		for {
-			n, err := conn.Write(buf)
+			n, err := conn.Write(commonBuf)
 			if err != nil {
 				if IsTimeout(err) {
 					break
@@ -294,6 +298,7 @@ func (sch *SpeedtestClientWithHost) Upload(opt *UpDownloadOption, callback UpDow
 				latestError = err
 			}
 			speedStat.Add(int64(n))
+			statistic.addTransferSize(int64(n)) // 增加
 		}
 	})
 }

@@ -214,7 +214,14 @@ func printRes(op string, res *speedtestclient.UpDownloadRes) {
 }
 
 func upDownCallback(character string) speedtestclient.UpDownloadCallback {
-	return func(speedPerSecond int64, elapsed, left time.Duration) {
-		log.Printf(character+" %s/s in %s, left %s\n", converter.ConvertFileSize(speedPerSecond, 2), elapsed/1e7*1e7, left/1e7*1e7)
+	return func(statistic *speedtestclient.Statistic) {
+		elapsed, left := statistic.ElapsedAndLeft()
+		log.Printf(
+			character+" %s %s/s in %s, left %s\n",
+			converter.ConvertFileSize(statistic.TransferSize(), 2),
+			converter.ConvertFileSize(statistic.SpeedPerSecond(), 2),
+			elapsed/1e7*1e7,
+			left/1e7*1e7,
+		)
 	}
 }
