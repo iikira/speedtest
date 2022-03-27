@@ -2,9 +2,9 @@ package speedtestclient
 
 import (
 	"bytes"
-	"github.com/iikira/BaiduPCS-Go/pcsutil/cachepool"
-	"github.com/iikira/BaiduPCS-Go/pcsutil/converter"
-	"github.com/iikira/BaiduPCS-Go/requester/rio/speeds"
+	"github.com/iikira/iikira-go-utils/requester/rio/speeds"
+	"github.com/iikira/iikira-go-utils/utils/cachepool"
+	"github.com/iikira/iikira-go-utils/utils/converter"
 	"github.com/iikira/speedtest/speedtestutil/bytemessage"
 	"golang.org/x/net/proxy"
 	"io"
@@ -195,9 +195,9 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 		wg          = sync.WaitGroup{}
 		// 统计
 		statistic = Statistic{
-			totalSize: UpDownloadSize,
+			totalSize:       UpDownloadSize,
 			speedPerSeconds: make([]int64, 0, 32),
-			timeout:   opt.Timeout,
+			timeout:         opt.Timeout,
 		}
 		speedStat = speeds.Speeds{} // 计算速度
 		ticker    = time.NewTicker(opt.CallbackInterval)
@@ -274,7 +274,7 @@ func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpD
 }
 
 func (sch *SpeedtestClientWithHost) Upload(opt *UpDownloadOption, callback UpDownloadCallback) (res *UpDownloadRes, err error) {
-	return sch.upDownload(opt, callback, func(i int,commonBuf []byte, wg *sync.WaitGroup, statistic *Statistic, speedStat *speeds.Speeds, latestError error) {
+	return sch.upDownload(opt, callback, func(i int, commonBuf []byte, wg *sync.WaitGroup, statistic *Statistic, speedStat *speeds.Speeds, latestError error) {
 		defer wg.Done()
 		conn, err := sch.dialHost()
 		if err != nil {

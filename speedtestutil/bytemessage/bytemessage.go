@@ -2,7 +2,7 @@ package bytemessage
 
 import (
 	"fmt"
-	"github.com/iikira/BaiduPCS-Go/pcsutil/converter"
+	"github.com/iikira/iikira-go-utils/utils/converter"
 )
 
 func Smessagef(format string, a ...interface{}) []byte {

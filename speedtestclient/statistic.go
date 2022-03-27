@@ -1,7 +1,7 @@
 package speedtestclient
 
 import (
-	"github.com/iikira/BaiduPCS-Go/baidupcs/expires"
+	"github.com/iikira/iikira-go-utils/utils/expires"
 	"sync/atomic"
 	"time"
 )

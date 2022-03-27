@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/iikira/BaiduPCS-Go/pcsutil/converter"
-	"github.com/iikira/BaiduPCS-Go/requester"
+	"github.com/iikira/iikira-go-utils/requester"
+	"github.com/iikira/iikira-go-utils/utils/converter"
 	"github.com/iikira/speedtest/speedtestclient"
 	"github.com/iikira/speedtest/speedtestutil/interfaceutil"
 	"log"

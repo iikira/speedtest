@@ -2,7 +2,7 @@ package speedtestclient
 
 import (
 	"fmt"
-	"github.com/iikira/BaiduPCS-Go/requester"
+	"github.com/iikira/iikira-go-utils/requester"
 	"net/url"
 )
 

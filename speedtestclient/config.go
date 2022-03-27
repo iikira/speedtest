@@ -3,8 +3,8 @@ package speedtestclient
 import (
 	"encoding/xml"
 	"fmt"
-	"github.com/iikira/BaiduPCS-Go/pcstable"
 	"github.com/iikira/speedtest/speedtestutil/xmlhelper"
+	"github.com/olekukonko/tablewriter"
 	"io"
 	"strconv"
 	"unsafe"
@@ -151,7 +151,11 @@ func (li *LocalInfo) PrintTo(w io.Writer) {
 }
 
 func (servList SpeedtestServerList) PrintTo(w io.Writer) {
-	table := pcstable.NewTable(w)
+	table := tablewriter.NewWriter(w)
+	table.SetAutoWrapText(false)
+	table.SetBorder(false)
+	table.SetHeaderLine(false)
+	table.SetColumnSeparator("")
 	table.SetHeader([]string{"ID", "NAME", "SPONSOR", "LATITUDE", "LONGTITUDE", "HOST"})
 	for _, v := range servList {
 		table.Append([]string{strconv.Itoa(v.ID), v.Name, v.Sponsor, strconv.FormatFloat(v.Lat, 'f', -1, 64), strconv.FormatFloat(v.Lon, 'f', -1, 64), v.Host})
