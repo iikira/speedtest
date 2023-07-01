@@ -30,7 +30,7 @@ func (s *Statistic) SpeedPerSecond() int64 {
 	return s.speedPerSecond
 }
 
-func (s *Statistic) appendSpeedPerSecond(speed int64) {
+func (s *Statistic) AppendSpeedPerSecond(speed int64) {
 	s.speedPerSeconds = append(s.speedPerSeconds, speed)
 }
 
@@ -48,11 +48,11 @@ func (s *Statistic) ElapsedAndLeft() (elapsed, left time.Duration) {
 	return elapsed, left
 }
 
-func (s *Statistic) startTimer() {
+func (s *Statistic) StartTimer() {
 	s.startTime = time.Now()
 	expires.StripMono(&s.startTime)
 }
 
-func (s *Statistic) addTransferSize(size int64) int64 {
+func (s *Statistic) AddTransferSize(size int64) int64 {
 	return atomic.AddInt64(&s.transferSize, size)
 }

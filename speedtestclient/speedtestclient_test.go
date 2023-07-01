@@ -2,7 +2,7 @@ package speedtestclient_test
 
 import (
 	"fmt"
-	"github.com/iikira/BaiduPCS-Go/pcsutil/converter"
+	"github.com/iikira/iikira-go-utils/utils/converter"
 	"github.com/iikira/speedtest/speedtestclient"
 	"testing"
 	"time"
@@ -64,8 +64,9 @@ func TestDownload(t *testing.T) {
 		Timeout:          15 * time.Second,
 		Parallel:         2,
 		CallbackInterval: 350 * time.Millisecond,
-	}, func(speedPerSecond int64, elapsed, left time.Duration) {
-		fmt.Printf("↓ %s/s in %s, left %s ... \n", converter.ConvertFileSize(speedPerSecond, 2), elapsed/1e7*1e7, left/1e7*1e7)
+	}, func(statistic *speedtestclient.Statistic) {
+		elapsed, left := statistic.ElapsedAndLeft()
+		fmt.Printf("↓ %s/s in %s, left %s ... \n", converter.ConvertFileSize(statistic.SpeedPerSecond(), 2), elapsed/1e7*1e7, left/1e7*1e7)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -79,8 +80,9 @@ func TestUpload(t *testing.T) {
 		Timeout:          15 * time.Second,
 		Parallel:         2,
 		CallbackInterval: 350 * time.Millisecond,
-	}, func(speedPerSecond int64, elapsed, left time.Duration) {
-		fmt.Printf("↑ %s/s in %s, left %s ... \n", converter.ConvertFileSize(speedPerSecond, 2), elapsed/1e7*1e7, left/1e7*1e7)
+	}, func(statistic *speedtestclient.Statistic) {
+		elapsed, left := statistic.ElapsedAndLeft()
+		fmt.Printf("↑ %s/s in %s, left %s ... \n", converter.ConvertFileSize(statistic.SpeedPerSecond(), 2), elapsed/1e7*1e7, left/1e7*1e7)
 	})
 	if err != nil {
 		t.Fatal(err)

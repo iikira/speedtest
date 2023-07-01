@@ -205,7 +205,7 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 		commonBuf = cachepool.RawMallocByteSlice(2048)
 	)
 
-	statistic.startTimer() // 开始计时
+	statistic.StartTimer() // 开始计时
 	wg.Add(opt.Parallel)
 	for i := 0; i < opt.Parallel; i++ {
 		go gofn(i, commonBuf, &wg, &statistic, &speedStat, latestError)
@@ -215,7 +215,7 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 			select {
 			case <-ticker.C:
 				speed := speedStat.GetSpeeds()
-				statistic.appendSpeedPerSecond(speed)
+				statistic.AppendSpeedPerSecond(speed)
 
 				// 更新统计
 				statistic.speedPerSecond = speed
@@ -268,7 +268,7 @@ func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpD
 				latestError = err
 			}
 			speedStat.Add(int64(n))
-			statistic.addTransferSize(int64(n)) // 增加
+			statistic.AddTransferSize(int64(n)) // 增加
 		}
 	})
 }
@@ -298,7 +298,7 @@ func (sch *SpeedtestClientWithHost) Upload(opt *UpDownloadOption, callback UpDow
 				latestError = err
 			}
 			speedStat.Add(int64(n))
-			statistic.addTransferSize(int64(n)) // 增加
+			statistic.AddTransferSize(int64(n)) // 增加
 		}
 	})
 }
