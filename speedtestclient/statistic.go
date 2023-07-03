@@ -9,12 +9,12 @@ import (
 type (
 	// Statistic 统计
 	Statistic struct {
-		totalSize       int64   // 总大小
-		transferSize    int64   // 已传输的数据量
-		speedPerSecond  int64   // 速度
-		speedPerSeconds []int64 // 用来计算平均速度的
-		timeout         time.Duration
+		totalSize       int64     // 总大小
+		transferSize    int64     // 已传输的数据量
+		speedPerSecond  int64     // 速度
+		speedPerSeconds []int64   // 用来计算平均速度的
 		startTime       time.Time // 启动时间
+		deadline        time.Time // 截止时间
 	}
 )
 
@@ -35,13 +35,14 @@ func (s *Statistic) AppendSpeedPerSecond(speed int64) {
 }
 
 func (s *Statistic) Elapsed() (elapsed time.Duration) {
-	elapsed = time.Now().Sub(s.startTime)
+	elapsed = time.Now().Sub(s.startTime).Round(100 * time.Millisecond)
 	return elapsed
 }
 
 func (s *Statistic) ElapsedAndLeft() (elapsed, left time.Duration) {
-	elapsed = time.Now().Sub(s.startTime)
-	left = s.timeout - elapsed
+	nowTime := time.Now()
+	elapsed = nowTime.Sub(s.startTime).Round(100 * time.Millisecond)
+	left = s.deadline.Sub(nowTime).Round(100 * time.Millisecond)
 	if left < 0 {
 		left = 0
 	}

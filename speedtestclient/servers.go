@@ -2,15 +2,14 @@ package speedtestclient
 
 import (
 	"bytes"
+	"context"
 	"github.com/iikira/iikira-go-utils/requester/rio/speeds"
 	"github.com/iikira/iikira-go-utils/utils/cachepool"
 	"github.com/iikira/iikira-go-utils/utils/converter"
 	"github.com/iikira/speedtest/speedtestutil/bytemessage"
 	"golang.org/x/net/proxy"
-	"io"
 	"net"
 	"net/url"
-	"sync"
 	"time"
 )
 
@@ -34,7 +33,7 @@ type (
 		CallbackInterval time.Duration // 回调函数调用的时间间隔
 	}
 
-	upDownloadHandleFunc func(i int, commonBuf []byte, wg *sync.WaitGroup, statistic *Statistic, speedStat *speeds.Speeds, latestError error)
+	upDownloadHandleFunc func(commonBuf []byte, errChan chan<- error, statistic *Statistic, speedStat *speeds.Speeds)
 )
 
 func (sc *SpeedtestClient) WithHost(host string) *SpeedtestClientWithHost {
@@ -191,25 +190,43 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 	}
 
 	var (
-		latestError error
-		wg          = sync.WaitGroup{}
 		// 统计
 		statistic = Statistic{
 			totalSize:       UpDownloadSize,
 			speedPerSeconds: make([]int64, 0, 32),
-			timeout:         opt.Timeout,
+			deadline:        time.Now().Add(opt.Timeout),
 		}
-		speedStat = speeds.Speeds{} // 计算速度
-		ticker    = time.NewTicker(opt.CallbackInterval)
-		stopChan  = make(chan struct{})
-		commonBuf = cachepool.RawMallocByteSlice(2048)
+		speedStat   = speeds.Speeds{} // 计算速度
+		ticker      = time.NewTicker(opt.CallbackInterval)
+		ctx, cancel = context.WithDeadline(context.Background(), statistic.deadline)
+		commonBuf   = cachepool.RawMallocByteSlice(2048)
+		errChan     = make(chan error, opt.Parallel)
 	)
+	defer cancel()
 
 	statistic.StartTimer() // 开始计时
-	wg.Add(opt.Parallel)
 	for i := 0; i < opt.Parallel; i++ {
-		go gofn(i, commonBuf, &wg, &statistic, &speedStat, latestError)
+		go gofn(commonBuf, errChan, &statistic, &speedStat)
 	}
+
+	// 监控 直到达到时间
+	// TODO: 这样会频繁创建goroutine, 可优化
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err = <-errChan:
+				if err != nil {
+					cancel()
+					return
+				}
+				// 下一轮
+				go gofn(commonBuf, errChan, &statistic, &speedStat)
+			}
+		}
+	}()
+
 	go func() { // start callback
 		for {
 			select {
@@ -222,18 +239,14 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 				if callback != nil {
 					callback(&statistic)
 				}
-			case <-stopChan:
+			case <-ctx.Done():
 				return
 			}
 		}
 	}()
-	wg.Wait()
 
-	close(stopChan)
+	<-ctx.Done()
 	ticker.Stop()
-	if latestError != nil {
-		return nil, latestError
-	}
 
 	elapsed := statistic.Elapsed()
 	res = NewUpDownloadRes(elapsed, &statistic)
@@ -241,64 +254,73 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 }
 
 func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpDownloadCallback) (res *UpDownloadRes, err error) {
-	return sch.upDownload(opt, callback, func(i int, commonBuf []byte, wg *sync.WaitGroup, statistic *Statistic, speedStat *speeds.Speeds, latestError error) {
-		defer wg.Done()
+	return sch.upDownload(opt, callback, func(commonBuf []byte, errChan chan<- error, statistic *Statistic, speedStat *speeds.Speeds) {
 		conn, err := sch.dialHost()
 		if err != nil {
+			errChan <- err
 			return
 		}
 		defer conn.Close()
 
-		conn.SetDeadline(time.Now().Add(opt.Timeout))
+		// 1分钟
+		// 超时会产生错误：io.EOF
+		conn.SetDeadline(time.Now().Add(1 * time.Minute))
 		_, err = conn.Write(bytemessage.Smessagef("DOWNLOAD %d\n", UpDownloadSize))
 		if err != nil { // 暂不处理
-			latestError = err
+			errChan <- err
 			return
 		}
 
+		var n int
 		for {
-			n, err := conn.Read(commonBuf)
-			if err != nil {
-				if err == io.EOF { // 已下载完毕，暂不处理
-					break
-				}
-				if IsTimeout(err) {
-					break
-				}
-				latestError = err
-			}
+			n, err = conn.Read(commonBuf)
 			speedStat.Add(int64(n))
 			statistic.AddTransferSize(int64(n)) // 增加
+			if err != nil {
+				if IsTimeout(err) { // 达到deadline
+					err = nil
+					break
+				}
+				break
+			}
 		}
+		errChan <- err
+		return
 	})
 }
 
 func (sch *SpeedtestClientWithHost) Upload(opt *UpDownloadOption, callback UpDownloadCallback) (res *UpDownloadRes, err error) {
-	return sch.upDownload(opt, callback, func(i int, commonBuf []byte, wg *sync.WaitGroup, statistic *Statistic, speedStat *speeds.Speeds, latestError error) {
-		defer wg.Done()
+	return sch.upDownload(opt, callback, func(commonBuf []byte, errChan chan<- error, statistic *Statistic, speedStat *speeds.Speeds) {
 		conn, err := sch.dialHost()
 		if err != nil {
+			errChan <- err
 			return
 		}
 		defer conn.Close()
 
-		conn.SetDeadline(time.Now().Add(opt.Timeout))
+		// 1分钟
+		// 超时会产生错误：broken pipe
+		conn.SetDeadline(time.Now().Add(1 * time.Minute))
 		_, err = conn.Write(bytemessage.Smessagef("UPLOAD %d\n", UpDownloadSize))
 		if err != nil { // 暂不处理
-			latestError = err
+			errChan <- err
 			return
 		}
 
+		var n int
 		for {
-			n, err := conn.Write(commonBuf)
-			if err != nil {
-				if IsTimeout(err) {
-					break
-				}
-				latestError = err
-			}
+			n, err = conn.Write(commonBuf)
 			speedStat.Add(int64(n))
 			statistic.AddTransferSize(int64(n)) // 增加
+			if err != nil {
+				if IsTimeout(err) { // 达到deadline
+					err = nil
+					break
+				}
+				break
+			}
 		}
+		errChan <- err
+		return
 	})
 }
