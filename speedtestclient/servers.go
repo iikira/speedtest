@@ -14,6 +14,8 @@ import (
 )
 
 const (
+	// SessionTime speedtest 会话最长时间
+	SessionTime    = 1 * time.Minute
 	PingTimeout    = 10 * time.Second
 	HiTimeout      = 1 * time.Minute
 	UpDownloadSize = 128 * converter.PB
@@ -33,7 +35,7 @@ type (
 		CallbackInterval time.Duration // 回调函数调用的时间间隔
 	}
 
-	upDownloadHandleFunc func(commonBuf []byte, errChan chan<- error, statistic *Statistic, speedStat *speeds.Speeds)
+	upDownloadHandleFunc func(ctx context.Context, commonBuf []byte, errChan chan<- error, statistic *Statistic, speedStat *speeds.Speeds)
 )
 
 func (sc *SpeedtestClient) WithHost(host string) *SpeedtestClientWithHost {
@@ -68,7 +70,7 @@ func (sch *SpeedtestClientWithHost) dialHost() (tcpConn *net.TCPConn, err error)
 	if sch.socks5URL != nil {
 		dialer, err = proxy.FromURL(sch.socks5URL, dialer)
 		if err != nil {
-			return nil, err
+			return
 		}
 	}
 
@@ -76,9 +78,7 @@ func (sch *SpeedtestClientWithHost) dialHost() (tcpConn *net.TCPConn, err error)
 	if err != nil {
 		return
 	}
-
 	tcpConn = conn.(*net.TCPConn)
-	tcpConn.SetKeepAlive(true)
 	return
 }
 
@@ -206,7 +206,7 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 
 	statistic.StartTimer() // 开始计时
 	for i := 0; i < opt.Parallel; i++ {
-		go gofn(commonBuf, errChan, &statistic, &speedStat)
+		go gofn(ctx, commonBuf, errChan, &statistic, &speedStat)
 	}
 
 	// 监控 直到达到时间
@@ -222,7 +222,7 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 					return
 				}
 				// 下一轮
-				go gofn(commonBuf, errChan, &statistic, &speedStat)
+				go gofn(ctx, commonBuf, errChan, &statistic, &speedStat)
 			}
 		}
 	}()
@@ -254,7 +254,7 @@ func (sch *SpeedtestClientWithHost) upDownload(opt *UpDownloadOption, callback U
 }
 
 func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpDownloadCallback) (res *UpDownloadRes, err error) {
-	return sch.upDownload(opt, callback, func(commonBuf []byte, errChan chan<- error, statistic *Statistic, speedStat *speeds.Speeds) {
+	return sch.upDownload(opt, callback, func(ctx context.Context, commonBuf []byte, errChan chan<- error, statistic *Statistic, speedStat *speeds.Speeds) {
 		conn, err := sch.dialHost()
 		if err != nil {
 			errChan <- err
@@ -264,7 +264,7 @@ func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpD
 
 		// 1分钟
 		// 超时会产生错误：io.EOF
-		conn.SetDeadline(time.Now().Add(1 * time.Minute))
+		after := time.After(1 * time.Minute)
 		_, err = conn.Write(bytemessage.Smessagef("DOWNLOAD %d\n", UpDownloadSize))
 		if err != nil { // 暂不处理
 			errChan <- err
@@ -272,16 +272,20 @@ func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpD
 		}
 
 		var n int
+	loop:
 		for {
-			n, err = conn.Read(commonBuf)
-			speedStat.Add(int64(n))
-			statistic.AddTransferSize(int64(n)) // 增加
-			if err != nil {
-				if IsTimeout(err) { // 达到deadline
-					err = nil
-					break
+			select {
+			case <-ctx.Done():
+				break loop
+			case <-after:
+				break loop
+			default:
+				n, err = conn.Read(commonBuf)
+				speedStat.Add(int64(n))
+				statistic.AddTransferSize(int64(n)) // 增加
+				if err != nil {
+					break loop
 				}
-				break
 			}
 		}
 		errChan <- err
@@ -290,7 +294,7 @@ func (sch *SpeedtestClientWithHost) Download(opt *UpDownloadOption, callback UpD
 }
 
 func (sch *SpeedtestClientWithHost) Upload(opt *UpDownloadOption, callback UpDownloadCallback) (res *UpDownloadRes, err error) {
-	return sch.upDownload(opt, callback, func(commonBuf []byte, errChan chan<- error, statistic *Statistic, speedStat *speeds.Speeds) {
+	return sch.upDownload(opt, callback, func(ctx context.Context, commonBuf []byte, errChan chan<- error, statistic *Statistic, speedStat *speeds.Speeds) {
 		conn, err := sch.dialHost()
 		if err != nil {
 			errChan <- err
@@ -300,7 +304,7 @@ func (sch *SpeedtestClientWithHost) Upload(opt *UpDownloadOption, callback UpDow
 
 		// 1分钟
 		// 超时会产生错误：broken pipe
-		conn.SetDeadline(time.Now().Add(1 * time.Minute))
+		after := time.After(1 * time.Minute)
 		_, err = conn.Write(bytemessage.Smessagef("UPLOAD %d\n", UpDownloadSize))
 		if err != nil { // 暂不处理
 			errChan <- err
@@ -308,16 +312,20 @@ func (sch *SpeedtestClientWithHost) Upload(opt *UpDownloadOption, callback UpDow
 		}
 
 		var n int
+	loop:
 		for {
-			n, err = conn.Write(commonBuf)
-			speedStat.Add(int64(n))
-			statistic.AddTransferSize(int64(n)) // 增加
-			if err != nil {
-				if IsTimeout(err) { // 达到deadline
-					err = nil
-					break
+			select {
+			case <-ctx.Done():
+				break loop
+			case <-after:
+				break loop
+			default:
+				n, err = conn.Write(commonBuf)
+				speedStat.Add(int64(n))
+				statistic.AddTransferSize(int64(n)) // 增加
+				if err != nil {
+					break loop
 				}
-				break
 			}
 		}
 		errChan <- err
